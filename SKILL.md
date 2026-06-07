@@ -1,6 +1,8 @@
 ---
 name: youtube-downloader
-description: '依照使用者偏好下載 YouTube 影片及字幕（預設 720p, 存至 F:\Download\YouTube）。'
+description: '依照使用者偏好下載 YouTube 影片及字幕（預設 720p, 存至 F:\\Download\\YouTube）。'
+version: 1.1.0
+created_by: agent
 ---
 
 # YouTube Downloader (YouTube 下載器)
@@ -38,7 +40,19 @@ description: '依照使用者偏好下載 YouTube 影片及字幕（預設 720p,
   - `--convert-subs srt`: 統一轉換為 `.srt` 格式。
 - **高品質翻譯 (Option B)**: 若使用者要求「AI 重新翻譯」，則下載英文 `.srt`，由 LLM 翻譯後覆蓋原檔。
 
-### 4. 執行指令 (Execution Command)
+### 4. 背景執行 (Non-blocking Execution) ⚡
+**多人使用環境 — 下載任務一律採用 `background=true` + `notify_on_complete=true`，絕對不阻塞當前對話。**
+
+```
+terminal(
+  command="~/.local/bin/yt-dlp ...",
+  background=true,
+  notify_on_complete=true,
+  timeout=600
+)
+```
+
+### 5. 執行指令 (Execution Command)
 基礎指令格式（包含字幕）：
 `~/.local/bin/yt-dlp [QUALITY_FILTER] --merge-output-format mp4 --write-subs --write-auto-subs --sub-langs "zh-Hant,zh-Hans,en" --convert-subs srt -o "[OUTPUT_PATH]/%(title)s.%(ext)s" [URL]`
 
@@ -48,12 +62,13 @@ description: '依照使用者偏好下載 YouTube 影片及字幕（預設 720p,
    - 若未指定解析度：使用 `720p`。
    - 若未指定路徑：使用 `/mnt/f/Download/YouTube`。
    - 若未指定格式：使用 `.mp4`。
-3. **確保目錄存在**: 執行 `mkdir -p [OUTPUT_PATH]`。
-4. **執行下載**: 呼叫 `~/.local/bin/yt-dlp` 並配合 `ffmpeg` 進行合併。
-5. **後處理 (選配)**: 若使用者要求 AI 翻譯，則對下載的字幕檔執行翻譯流程。
+3. **確保目錄存在**: 執行 `mkdir -p [OUTPUT_PATH]`（前景，秒回）。
+4. **背景下載 (非阻塞)**: 透過 `terminal(background=True, notify_on_complete=True)` 呼叫 yt-dlp。**立即回覆使用者「已開始下載」**，待完成後系統會自動通知結果。
+5. **後處理 (選配)**: 若使用者要求 AI 翻譯，則對下載的字幕檔執行翻譯流程（同樣使用背景執行）。
 6. **交付結果**: 通知使用者最終檔案路徑與字幕狀態。
 
 ## 注意事項 (Pitfalls)
-- **權限問題**: 絕對不要使用 `sudo` 執行 `yt-dlp`，請直接使用 `~/.local/bin/` 下的二進位檔。
+- **非阻塞優先**: 多人環境中，長時間任務（下載 >10s、轉錄等）**必須**用 `background=true`，避免被其他使用者的聊天打斷。
+- **權限問題**: 絕對不要使用 `sudo` 執行 `yt-dlp`，請直接使⽤ `~/.local/bin/` 下的二進位檔。
 - **FFmpeg 依賴**: 高畫質影片與字幕轉換需要 `ffmpeg`，執行前請確認 `ffmpeg` 已安裝。
-- **特殊字元**: YouTube 標題常包含特殊字元，`yt-dlp` 會自動處理，但請確保在 shell 指令中對路徑使用引號 (`" "`)。
+- **特殊字元**: YouTube 標題常包含特殊字元，`yt-dlp` 會自動處理，但請確保在 shell 指令中對路徑使用引號 (`" "`).
