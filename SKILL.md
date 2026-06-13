@@ -52,23 +52,28 @@ terminal(
 )
 ```
 
-### 5. 執行指令 (Execution Command)
-基礎指令格式（包含字幕）：
-`~/.local/bin/yt-dlp [QUALITY_FILTER] --merge-output-format mp4 --write-subs --write-auto-subs --sub-langs "zh-Hant,zh-Hans,en" --convert-subs srt -o "[OUTPUT_PATH]/%(title)s.%(ext)s" [URL]`
+### 6. 片段截取與暫存檔清理 (Video Trimming & Cleanup) ♻️
+當使用者要求截取影片特定時間段（例如 `06:35-07:24`）時，必須執行「閉環清理」以避免大檔案佔用磁碟空間：
+- **暫存邏輯**: 將完整影片下載至 `/tmp/` 目錄（或其他臨時路徑）。
+- **截取邏輯**: 使用 `ffmpeg` 從暫存檔截取片段 $\rightarrow$ 輸出至最終目標路徑（如 `F:\Download\YouTube`）。
+- **清理邏輯**: 截取完成後，**必須立即**執行 `rm` 刪除 `/tmp/` 中的完整暫存檔。
+- **指令範例**: `yt-dlp ... -o "/tmp/temp_vid.mp4" [URL] && ffmpeg -i /tmp/temp_vid.mp4 -ss [START] -to [END] -c copy [FINAL_PATH] && rm /tmp/temp_vid.mp4`
 
 ## 執行流程 (Workflow)
-1. **解析請求**: 確認影片網址 (URL)、要求的解析度、存放路徑及是否需要特殊翻譯。
+1. **解析請求**: 確認影片網址 (URL)、要求的解析度、存放路徑及是否需要特殊翻譯。**若涉及時間截取，需啟用閉環清理流程。**
 2. **套用預設值**: 
    - 若未指定解析度：使用 `720p`。
    - 若未指定路徑：使用 `/mnt/f/Download/YouTube`。
    - 若未指定格式：使用 `.mp4`。
 3. **確保目錄存在**: 執行 `mkdir -p [OUTPUT_PATH]`（前景，秒回）。
-4. **背景下載 (非阻塞)**: 透過 `terminal(background=True, notify_on_complete=True)` 呼叫 yt-dlp。**立即回覆使用者「已開始下載」**，待完成後系統會自動通知結果。
+4. **背景執行 (非阻塞)**: 透過 `terminal(background=True, notify_on_complete=True)` 呼叫 yt-dlp 或截取指令鏈。**立即回覆使用者「已開始下載/處理」**，待完成後系統會自動通知結果。
 5. **後處理 (選配)**: 若使用者要求 AI 翻譯，則對下載的字幕檔執行翻譯流程（同樣使用背景執行）。
 6. **交付結果**: 通知使用者最終檔案路徑與字幕狀態。
 
-## 注意事項 (Pitfalls)
-- **非阻塞優先**: 多人環境中，長時間任務（下載 >10s、轉錄等）**必須**用 `background=true`，避免被其他使用者的聊天打斷。
-- **權限問題**: 絕對不要使用 `sudo` 執行 `yt-dlp`，請直接使⽤ `~/.local/bin/` 下的二進位檔。
-- **FFmpeg 依賴**: 高畫質影片與字幕轉換需要 `ffmpeg`，執行前請確認 `ffmpeg` 已安裝。
-- **特殊字元**: YouTube 標題常包含特殊字元，`yt-dlp` 會自動處理，但請確保在 shell 指令中對路徑使用引號 (`" "`).
+### 4. 故障排除與 429 錯誤應對 (Troubleshooting)
+- **HTTP 429 (Too Many Requests)**: 當 YouTube 伺服器偵測到過多請求（尤其是字幕端點）時會觸發封鎖。
+- **應對策略**:
+    1. **優先順序降級**: 若包含字幕的完整指令失敗，立即嘗試「僅下載影片」模式（移除 `--write-subs` 與 `--write-auto-subs`），優先確保主體檔案下載。
+    2. **簡化格式篩選**: 使用 `-f "best"` 取代複雜的格式過濾器，減少與 API 的交互次數。
+    3. **等待重試 (Back-off)**: 若所有模式均失敗，建議等待 5-10 分鐘後再試。
+- **JS Runtime 警告**: 若出現 `No supported JavaScript runtime could be found`，通常不影響基本下載，但若導致部分格式缺失，可考慮安裝 `deno`。
