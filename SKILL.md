@@ -25,11 +25,15 @@ created_by: agent
 - 使用 `mkdir -p` 確保目標目錄已存在。
 
 ### 2. 畫質選擇 (Quality Selection)
-- **720p**: `-f "bestvideo[height<=720]+bestaudio/best[height<=720]"`
-- **1080p**: `-f "bestvideo[height<=1080]+bestaudio/best[height<=1080]"`
-- **最高畫質 (Best)**: `-f "bestvideo+bestaudio/best"`
+- **JS Runtime 啟動**: 為了確保能偵測到 720p 以上的高畫質格式，指令必須包含 `--js-runtimes node`。
+- **720p (相容直式/橫式)**: `--js-runtimes node -f "bestvideo[width=720]+bestaudio/bestvideo[height=720]+bestaudio/best"`
+- **1080p**: `--js-runtimes node -f "bestvideo[width=1080]+bestaudio/bestvideo[height=1080]+bestaudio/best"`
+- **最高畫質 (Best)**: `--js-runtimes node -f "bestvideo+bestaudio/best"`
 - **僅音訊 (Audio only)**: `-x --audio-format mp3`
 - **指定 ID**: 若使用者透過 `-F` 清單選擇，則使用 `-f [ID]`。
+
+**⚠️ 直式影片 (Shorts) 陷阱**:
+直式影片的解析度是 `寬x高` (例如 720x1280)。若僅指定 `height=720` 會導致篩選失敗並回退至低畫質。請務必使用 `[width=720]` 或上述的相容選擇器。詳情參閱 `references/youtube-shorts-resolution.md`。
 
 ### 3. 字幕處理 (Subtitle Processing)
 - **下載邏輯**: 優先下載原生中文字幕，其次是自動生成中文字幕，最後是自動翻譯為中文。
@@ -76,4 +80,5 @@ terminal(
     1. **優先順序降級**: 若包含字幕的完整指令失敗，立即嘗試「僅下載影片」模式（移除 `--write-subs` 與 `--write-auto-subs`），優先確保主體檔案下載。
     2. **簡化格式篩選**: 使用 `-f "best"` 取代複雜的格式過濾器，減少與 API 的交互次數。
     3. **等待重試 (Back-off)**: 若所有模式均失敗，建議等待 5-10 分鐘後再試。
-- **JS Runtime 警告**: 若出現 `No supported JavaScript runtime could be found`，通常不影響基本下載，但若導致部分格式缺失，可考慮安裝 `deno`。
+- **JS Runtime 警告**: 若出現 `No supported JavaScript runtime could be found`，可能會導致 `yt-dlp` 在自動篩選時無法偵測到 720p 及以上的高畫質格式（被 YouTube 隱藏在 JS 端點後）。詳見 `references/js-runtime-resolution-issue.md`。
+    - **解決方案 (精確打擊)**：執行 `yt-dlp -F` 找出高品質格式的具體 ID $\rightarrow$ 使用 `-f "[VideoID]+[AudioID]"` 強制指定下載，繞過自動篩選邏輯。
