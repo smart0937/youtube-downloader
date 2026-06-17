@@ -14,7 +14,9 @@ created_by: agent
 - **解析度 (Resolution)**: `720p` (除非使用者另有指定)。
 - **存放路徑 (Output Path)**: `/mnt/f/Download/YouTube` (對應 Windows `F:\Download\YouTube`)。
 - **檔案格式 (Format)**: `.mp4` (透過 ffmpeg 合併)。
-- **字幕設定 (Subtitles)**: 預設一併下載中文字幕，格式統一為 `.srt`。
+- **字幕設定 (Subtitles)**: 
+  - **標準模式**: 預設一併下載中文字幕，格式統一為 `.srt`。
+  - **安全模式 (Safe Mode)**: 僅下載影片主體，不下載字幕。適用於大量下載或遇到 **HTTP 429 (Too Many Requests)** 時，可有效繞過伺服器限制。
 
 ## 實作細節
 
@@ -24,15 +26,31 @@ created_by: agent
 - `D:\` 轉換為 `/mnt/d/`
 - 使用 `mkdir -p` 確保目標目錄已存在。
 
-### 2. 畫質選擇 (Quality Selection)
+### 2. 畫質與格式選擇 (Quality & Format Selection)
 - **JS Runtime 啟動**: 為了確保能偵測到 720p 以上的高畫質格式，指令必須包含 `--js-runtimes node`。
-- **720p (相容直式/橫式)**: `--js-runtimes node -f "bestvideo[width=720]+bestaudio/bestvideo[height=720]+bestaudio/best"`
-- **1080p**: `--js-runtimes node -f "bestvideo[width=1080]+bestaudio/bestvideo[height=1080]+bestaudio/best"`
-- **最高畫質 (Best)**: `--js-runtimes node -f "bestvideo+bestaudio/best"`
-- **僅音訊 (Audio only)**: `-x --audio-format mp3`
-- **指定 ID**: 若使用者透過 `-F` 清單選擇，則使用 `-f [ID]`。
+- **畫質選擇器 (Resolution Selectors)**:
+  - **720p (相容直式/橫式)**: `-f "bestvideo[width=720]+bestaudio/bestvideo[height=720]+bestaudio/best"` (注意：此設定通常會回傳 **WebM** 格式，因為其品質較佳)。
+  - **1080p**: `-f "bestvideo[width=1080]+bestaudio/bestvideo[height=1080]+bestaudio/best"`
+  - **最高畫質 (Best)**: `-f "bestvideo+bestaudio/best"`
+  - **僅音訊 (Audio only)**: `-x --audio-format mp3`
+
+**⚠️ 格式與畫質的權衡陷阱 (The Format vs. Resolution Trade-off)**:
+YouTube 的 MP4 (H.264) 軌道通常最高僅提供至 360p 或 480p。若強行指定 `[ext=mp4]`，`yt-dlp` 會為了滿足格式要求而**自動降級畫質**。
+
+- **需求 A：只要 MP4，畫質隨緣** $\rightarrow$ 使用 `-f "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]"`。
+- **需求 B：必須 720p 以上且必須是 MP4** $\rightarrow$ **唯一可靠路徑**：
+  1. 下載 WebM 版本 (保證有 720p+) $\rightarrow$ 2. 使用 `ffmpeg` 轉碼為 MP4。
+  - **轉碼指令範例**: `ffmpeg -i input.webm -c:v libx264 -preset fast -crf 22 -c:a aac -b:a 128k output.mp4`
+
+### 2. 畫質與格式選擇 (Quality & Format Selection)
+... [Existing content] ...
+
+**⚠️ 檔名陷阱 (Naming Pitfall)**:
+禁止使用 Shell 變數（如 `$(yt-dlp --get-title)`）來獲取標題並命名檔案。若 `yt-dlp` 輸出警告訊息（WARNING），該訊息會被誤抓入變數，導致檔名變成日期或其他錯誤文字。
+- **正確做法**：始終使用 `yt-dlp` 內建的輸出模板：`-o "/mnt/f/Download/YouTube/%(title)s.%(ext)s"`。
 
 **⚠️ 直式影片 (Shorts) 陷阱**:
+... [Existing content] ...
 直式影片的解析度是 `寬x高` (例如 720x1280)。若僅指定 `height=720` 會導致篩選失敗並回退至低畫質。請務必使用 `[width=720]` 或上述的相容選擇器。詳情參閱 `references/youtube-shorts-resolution.md`。
 
 ### 3. 字幕處理 (Subtitle Processing)
@@ -62,6 +80,9 @@ terminal(
 - **截取邏輯**: 使用 `ffmpeg` 從暫存檔截取片段 $\rightarrow$ 輸出至最終目標路徑（如 `F:\Download\YouTube`）。
 - **清理邏輯**: 截取完成後，**必須立即**執行 `rm` 刪除 `/tmp/` 中的完整暫存檔。
 - **指令範例**: `yt-dlp ... -o "/tmp/temp_vid.mp4" [URL] && ffmpeg -i /tmp/temp_vid.mp4 -ss [START] -to [END] -c copy [FINAL_PATH] && rm /tmp/temp_vid.mp4`
+
+## 執行警告 (Execution Warning)
+**⚠️ 避免直覺偏差 (Intuition Trap)**：即使對 `yt-dlp` 或相關工具非常熟悉，也必須首先載入此 Skill 並對照 SOP。禁止在已記錄的已知陷阱（如 JS Runtime 導致的高畫質遺失、直式影片解析度判定）上進行重複的「試錯 $\rightarrow$ 修正」循環。優先依賴 SOP 中的「精確打擊」方案而非即時推理。
 
 ## 執行流程 (Workflow)
 1. **解析請求**: 確認影片網址 (URL)、要求的解析度、存放路徑及是否需要特殊翻譯。**若涉及時間截取，需啟用閉環清理流程。**
